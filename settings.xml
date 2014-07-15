@@ -1,0 +1,26 @@
+<?xml version="1.0"?>
+
+<Root>
+	<access_token>henk</access_token>
+
+	<!-- <remote_repository></remote_repository> -->
+
+	<!-- <branch></branch> -->
+
+	<!-- <target_dir></target_dir> -->
+
+	<!-- <delete_files></delete_files> -->
+
+	<!-- <exclude>
+		<item_1></item_1>
+		<item_2></item_2>
+	</exclude> -->
+
+	<!-- <clean_up></clean_up> -->
+
+	<!-- <time_limit></time_limit> -->
+
+	<!-- <use_composer></use_composer> -->
+
+	<!-- <composer_options></composer_options> -->
+</Root>
