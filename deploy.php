@@ -62,6 +62,7 @@ class DeploySettings{
 	 * @var boolean
 	 */
 	public $delete_files = false;
+	public $delete_branch_files = true;
 
 	/**
 	 * The directories and files that are to be excluded when updating the code.
@@ -112,7 +113,7 @@ class DeploySettings{
 	 *
 	 * @var string Full backup directory path e.g. '/tmp/'
 	 */
-	public $backup_dir       = false;
+	public $backup_dir = false;
 
 	/**
 	 * OPTIONAL
@@ -122,7 +123,7 @@ class DeploySettings{
 	 * @var boolean Whether to use grunt or not
 	 * @link http://gruntjs.com/
 	 */
-	public $run_grunt        = false;
+	public $run_grunt = false;
 
 	/**
 	 * OPTIONAL
@@ -133,7 +134,7 @@ class DeploySettings{
 	 * @var boolean Whether to use composer or not
 	 * @link http://getcomposer.org/
 	 */
-	public $use_composer     = false;
+	public $use_composer = false;
 
 	/**
 	 * OPTIONAL
@@ -157,7 +158,23 @@ class DeploySettings{
 
 	    // overwrite the default settings based on the xml settings
 	    foreach ($settings as $setting => $value) {
-    		$this->$setting = ($value == 'false' ? false : ($value == 'true' ? true : $value));
+	    	// if we need to cast the string type to something else
+	    	if($attributes = $value->attributes()) {
+	    		if(isset($attributes['typecast'])) {
+	    			if($attributes['typecast'] == 'bool' || $attributes['typecast'] == 'boolean') {
+		    			$value = ($value->__toString() == 'true' || $value->__toString() == 1);
+	    			} else {
+		    			settype($value, $attributes['typecast']);
+
+		    			// if it is an array remove the attributes from the array
+		    			if($attributes['typecast'] == 'array') {
+		    				unset($value['@attributes']);
+		    			}
+	    			}
+	    		}
+	    	}
+
+    		$this->$setting = $value;
 	    }
 
 	    // set the tmp dir
@@ -197,6 +214,22 @@ if (!isset($_GET['sat']) || $_GET['sat'] != $settings->access_token) {
 }
 if ($settings->access_token === 'BetterChangeMeNowOrSufferTheConsequences') {
 	die("<h2>You're suffering the consequences!<br>Change the access_token from it's default value!</h2>");
+}
+
+// if there is post data from git
+if($HTTP_RAW_POST_DATA) {
+	$json_post_data = json_decode($HTTP_RAW_POST_DATA);
+} else {
+	$json_post_data = false;
+}
+
+// if this is a git call get which branch we hooked
+if($json_post_data) {
+	if($branch = array_pop(preg_split("/[\/]+/", $json_post_data->ref))) {
+		if($branch != $settings->branch) {
+			die('<h2>We won\'t continue because this is not our branch!</h2>');
+		}
+	}
 }
 ?>
 <pre>
@@ -325,6 +358,46 @@ if ($settings->clean_up) {
 	);
 }
 
+if ($settings->delete_branch_files) {
+	if($json_post_data) {
+		$delete_files = array();
+		// get the commit belonging to this hook
+		foreach ($json_post_data->commits as $commit) {
+			if($commit->removed) {
+				$delete_files = array_merge($commit->removed, $delete_files);
+			}
+			// diff the files which are added again
+			if($commit->added) {
+				$delete_files = array_diff($delete_files, $commit->added);
+			}
+		}
+
+		// also add the head commit
+		if($commit = $json_post_data->head_commit) {
+			if($commit->removed) {
+				$delete_files = array_merge($commit->removed, $delete_files);
+			}
+			// diff the files which are added again
+			if($commit->added) {
+				$delete_files = array_diff($delete_files, $commit->added);
+			}
+		}
+
+		// get the files unique so only delete once
+		$delete_files = array_unique($delete_files);
+		// remove excluded
+		$delete_files = array_diff($delete_files, $settings->exclude);
+
+		// add the remove to the commands
+		foreach ($delete_files as $key => $file) {
+			$commands['delete_branch_file_'.$key] = sprintf(
+				'rm -rf %s'
+				, $settings->target_dir.$file
+			);
+		}
+	}
+}
+
 // =======================================[ Run grunt ]===
 
 if($settings->run_grunt) {
@@ -335,7 +408,7 @@ if($settings->run_grunt) {
 // =======================================[ Run the command steps ]===
 
 foreach ($commands as $command) {
-	set_time_limit(intval($settings->time_limit)); // Reset the time limit for each command
+	set_time_limit($settings->time_limit); // Reset the time limit for each command
 	if (file_exists($settings->tmp_dir) && is_dir($settings->tmp_dir)) {
 		chdir($settings->tmp_dir); // Ensure that we're in the right directory
 	}
